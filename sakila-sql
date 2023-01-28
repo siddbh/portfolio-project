@@ -1,0 +1,161 @@
+/*Commit and Rollback*/
+SET autocommit = 1;
+
+USE test;
+
+DROP TABLE IF exists sample_table;
+
+CREATE TABLE sample_table (
+  `StudentID` int(11) NOT NULL AUTO_INCREMENT,
+  `StudentName` varchar(15) NOT NULL,
+  PRIMARY KEY (`StudentID`)
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8;
+
+
+INSERT INTO sample_table VALUE (9, 'Gaurav');
+INSERT INTO sample_table VALUE (10,'Rajesh');
+
+SELECT * FROM sample_table;
+
+SET autocommit = 0;
+
+INSERT INTO sample_table VALUE (11, 'Akhil');
+
+SELECT * FROM sample_table;
+ROLLBACK;
+
+SELECT * FROM sample_table;
+
+/*Correlated sub-queries
+A correlated sub-query is a query that contains a reference to a table that also
+appears in the outer query*/
+
+/*Correlated sub-query with ANY and ALL operator
+The ANY operator returns TRUE if any of the subquery value meets the condition*/
+SET autocommit = 1;
+
+USE northwind;
+
+SELECT * FROM products;
+SELECT * FROM `order details`;
+
+/*List the product names for any record with quantity = 10*/
+SELECT 
+    ProductName
+FROM
+    products
+WHERE
+    ProductID = ANY (SELECT 
+            ProductID
+        FROM
+            `order details`
+        WHERE
+            quantity = 10);
+            
+            
+/*The ALL operator returns TRUE only if all of the subquery values meet the condition*/
+SELECT 
+    ProductName
+FROM
+    products
+WHERE
+    ProductID = ALL (SELECT 
+            ProductID
+        FROM
+            `order details`
+        WHERE
+            quantity = 10);
+            
+            
+/*Views and indexes in MySQL*/
+
+USE northwind;
+
+/*Create a view for all the customers who are from Brazil*/
+
+DROP VIEW IF EXISTS Brazil_Customers;
+
+SELECT * FROM customers;
+
+CREATE VIEW Brazil_Customers AS
+    SELECT 
+        CompanyName, ContactName
+    FROM
+        customers
+    WHERE
+        Country = 'Brazil';
+        
+SELECT * FROM Brazil_Customers;
+
+/*Assignment - Create a view for all the products above the average price*/
+
+
+
+
+/*https://dev.mysql.com/doc/sakila/en/sakila-installation.html - A complete documentation of sakila*/
+
+SELECT NOW();
+
+SHOW privileges; /*Used to check if you have priveleges to create stored procedures and functions*/
+
+DELIMITER $$   /*This is done to differentiate the end of the function and the SQL statement*/
+
+CREATE FUNCTION inventory_in_stock(p_inventory_id INT) RETURNS BOOLEAN
+READS SQL DATA
+BEGIN
+    DECLARE v_rentals INT;
+    DECLARE v_out     INT;
+
+    #AN ITEM IS IN-STOCK IF THERE ARE EITHER NO ROWS IN THE rental TABLE
+    #FOR THE ITEM OR ALL ROWS HAVE return_date POPULATED
+
+    SELECT COUNT(*) INTO v_rentals
+    FROM rental
+    WHERE inventory_id = p_inventory_id;
+
+    IF v_rentals = 0 THEN
+      RETURN TRUE;
+    END IF;
+
+    SELECT COUNT(rental_id) INTO v_out
+    FROM inventory LEFT JOIN rental USING(inventory_id)
+    WHERE inventory.inventory_id = p_inventory_id
+    AND rental.return_date IS NULL;
+
+    IF v_out > 0 THEN
+      RETURN FALSE;
+    ELSE
+      RETURN TRUE;
+    END IF;
+END $$
+
+DELIMITER ;
+
+USE sakila;
+
+SELECT inventory_in_stock(10);
+
+DELIMITER $$
+
+CREATE PROCEDURE film_in_stock(IN p_film_id INT, IN p_store_id INT, OUT p_film_count INT)
+READS SQL DATA
+BEGIN
+     SELECT inventory_id
+     FROM inventory
+     WHERE film_id = p_film_id
+     AND store_id = p_store_id
+     AND inventory_in_stock(inventory_id);
+
+     SELECT COUNT(*)
+     FROM inventory
+     WHERE film_id = p_film_id
+     AND store_id = p_store_id
+     AND inventory_in_stock(inventory_id)
+     INTO p_film_count;
+END $$
+
+DELIMITER ;
+
+CALL film_in_stock(1, 1, @count);
+
+SELECT * FROM inventory;
