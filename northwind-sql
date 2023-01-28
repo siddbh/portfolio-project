@@ -1,0 +1,233 @@
+use northwind;
+
+show tables;
+
+select * from categories;
+
+select * from orders;
+
+/*casestudy */
+
+USE northwind;
+
+/*1. What are the top selling products and categories from Northwind by month and year?*/
+
+-- Create a merged table with the product and category information merged with the order details tables
+
+
+CREATE TABLE test_db.order_product_category;
+
+SELECT o.*,
+       od.unitprice, od.quantity,
+       p.productname,
+       c.categoryname, c.description,
+       YEAR(o.orderdate) AS yr,
+       MONTH(o.orderdate) AS mt FROM
+    orders AS o
+        LEFT JOIN
+    `order details` AS od ON o.orderid = od.orderid
+        LEFT JOIN
+    products AS p ON od.productid = p.productid
+        LEFT JOIN
+    categories AS c ON p.categoryid = c.categoryid;
+    
+    SELECT * FROM test_db.order_product_category;
+    
+    
+    
+    -- Aggregating the data at the required level from the merged table
+
+DROP TABLE test_db.order_product_category_agg;
+
+CREATE TABLE test_db.order_product_category_agg 
+SELECT yr,
+    mt,
+    categoryname,
+    productname,
+    SUM(unitprice * quantity) AS sales FROM
+    test_db.order_product_category
+GROUP BY yr , mt , categoryname , productname
+ORDER BY yr , mt , categoryname , productname;
+
+SELECT * FROM test_db.order_product_category_agg;
+
+SELECT yr, mt, categoryname, productname, max(sales) AS max_sales
+FROM test_db.order_product_category_agg
+group by yr, mt, categoryname;
+
+SELECT * FROM test_db.order_product_category_agg;
+
+/*2. Which countries have the highest shipping in terms of sales by year and month?*/
+
+-- Aggregating the data at the country level from the merged table
+
+DROP TABLE test_db.order_country_agg;
+
+SELECT * FROM test_db.order_product_category;
+
+CREATE TABLE test_db.order_country_agg 
+SELECT yr,
+    mt,
+    shipcountry,
+    SUM(unitprice * quantity) AS sales FROM
+    test_db.order_product_category
+GROUP BY yr , mt , shipcountry
+ORDER BY yr , mt , shipcountry;
+
+
+SELECT 
+    yr, mt, shipcountry, MAX(sales) AS top_sales
+FROM
+    test_db.order_country_agg
+GROUP BY yr , mt;
+
+SELECT * FROM test_db.order_country_agg;
+
+
+
+
+/*3. Who are the top 3 customers and their contact titles for each country based on sales amount?*/
+
+-- Creating a  merged table with the customer information merged with the order details tables
+
+DROP TABLE test_db.order_country_customer;
+
+CREATE TABLE test_db.order_country_customer 
+SELECT o.*,
+    od.unitprice,
+    od.quantity,
+    c.companyname,
+    c.contactname,
+    c.contacttitle,
+    c.country,
+    YEAR(orderdate) AS yr,
+    MONTHNAME(orderdate) AS mt
+    FROM
+    orders o
+        LEFT JOIN
+    `order details` od ON o.orderid = od.orderid
+        LEFT JOIN
+    customers c ON o.customerid = c.customerid;
+
+SELECT * FROM test_db.order_country_customer;
+
+
+-- Aggregating and ranking customers at a country level in terms of sales
+
+DROP TABLE test_db.order_country_customer_top3;
+
+SELECT country, contactname, contacttitle, 
+SUM(unitprice*quantity) as sales,
+ROW_NUMBER() OVER (PARTITION BY country ORDER BY SUM(unitprice*quantity) DESC) as rnk
+FROM test_db.order_country_customer
+GROUP BY country, contactname, contacttitle
+ORDER BY country, contactname, contacttitle ;
+
+SELECT *
+FROM (SELECT country, contactname, contacttitle, 
+SUM(unitprice*quantity) as sales,
+ROW_NUMBER() OVER (PARTITION BY country ORDER BY SUM(unitprice*quantity) DESC) as rnk
+FROM test_db.order_country_customer
+GROUP BY country, contactname, contacttitle
+ORDER BY country, contactname, contacttitle)
+ AS a
+ WHERE rnk <= 3;
+
+CREATE TABLE test_db.order_country_customer_top3
+SELECT country, contactname, contacttitle, sales, rnk
+FROM 
+(
+SELECT country, contactname, contacttitle, 
+SUM(unitprice*quantity) as sales,
+ROW_NUMBER() OVER (PARTITION BY country ORDER BY SUM(unitprice*quantity) DESC) as rnk
+FROM test_db.order_country_customer
+GROUP BY country, contactname, contacttitle
+ORDER BY country, contactname, contacttitle 
+) a
+WHERE rnk<=3 ;
+
+SELECT * FROM test_db.order_country_customer_top3 ;
+
+
+/*4. Create the reporting hierarchy of Employees.*/
+
+-- Performing a self join on the Employees table to get the reporting supervisor
+
+DROP TABLE test_db.employee_org_chart;
+
+SELECT * FROM employees;
+
+
+CREATE TABLE test_db.employee_org_chart 
+SELECT a.employeeid,
+    CONCAT(a.lastname, ', ', a.firstname) AS employeename,
+    a.reportsto,
+    b.employeeid AS supid,
+    CONCAT(b.lastname, ', ', b.firstname) AS supname FROM
+    employees a
+        LEFT JOIN
+    employees b ON a.reportsto = b.employeeid;
+
+SELECT * FROM test_db.employee_org_chart;
+
+
+
+/*5. Employee and manager performance in terms of sales.*/
+
+-- Creating a merged table with the Org chart table merged with the Order Details table
+
+create table test_db.order_employee_manager;
+
+CREATE TABLE test_db.order_employee_manager
+SELECT o.*,
+    od.unitprice,
+    od.quantity,
+    e.employeename,
+    e.supname,
+    YEAR(orderdate) AS yr,
+    MONTH(orderdate) AS mth FROM
+    orders o
+        LEFT JOIN
+    `order details` od ON o.orderid = od.orderid
+        LEFT JOIN
+    test_db.employee_org_chart e ON o.employeeid = e.employeeid;
+    
+SELECT * FROM test_db.order_employee_manager;
+    
+-- Aggregating the data at the employee and superior level from the merged table
+
+DROP TABLE test_db.order_employee_manager_agg;
+
+CREATE TABLE test_db.order_employee_manager_agg SELECT yr,
+    mth,
+    supname,
+    employeename,
+    SUM(unitprice * quantity) AS sales FROM
+    test_db.order_employee_manager
+GROUP BY yr , mth , supname , employeename
+ORDER BY yr , mth , supname , employeename;
+
+SELECT * FROM test_db.order_employee_manager_agg;
+
+
+SELECT * FROM test_db.order_employee_manager_agg
+WHERE employeename = 'Davolio, Nancy';
+
+
+DELETE FROM test_db.order_employee_manager_agg 
+WHERE employeename = 'Davolio, Nancy' ;
+
+SELECT * FROM test_db.order_employee_manager_agg 
+WHERE employeename = 'Davolio, Nancy' ;
+
+SELECT * FROM test_db.order_employee_manager_agg
+WHERE employeename = 'Dodsworth, Anne';
+
+UPDATE test_db.order_employee_manager_agg 
+SET employeename = 'Singh, Charan' WHERE employeename = 'Dodsworth, Anne' ;
+
+SELECT * FROM test_db.order_employee_manager_agg
+WHERE employeename = 'Dodsworth, Anne';
+
+SELECT * FROM test_db.order_employee_manager_agg
+WHERE employeename = 'Singh, Charan';
